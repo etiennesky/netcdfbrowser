@@ -45,7 +45,7 @@ def author():
     return "Etienne Tourigny"
 
 def email():
-    return "etourigny.dev at gmail dot com"
+    return "etourigny.dev@gmail.com"
 
 def classFactory(iface):
     # load NetCDFBrowser class from file NetCDFBrowser

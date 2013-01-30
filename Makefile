@@ -33,7 +33,7 @@ PLUGINNAME = netcdfbrowser
 
 PY_FILES = netcdfbrowser.py netcdfbrowserdialog.py __init__.py
 
-EXTRAS = icon.png 
+EXTRAS = icon.png metadata.txt
 
 UI_FILES = ui_netcdfbrowser.py
 
