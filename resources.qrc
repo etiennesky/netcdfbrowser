@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/plugins/netcdfbrowser" >
+        <file>icon.png</file>
+    </qresource>
+</RCC>
