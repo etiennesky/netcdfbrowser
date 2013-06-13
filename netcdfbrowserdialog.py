@@ -56,7 +56,7 @@ class MyMenu(QMenu):
 def num(s):
     try:
         return int(s)
-    except exceptions.ValueError:
+    except ValueError:
         return float(s)
 
 
@@ -116,7 +116,7 @@ class NetCDFBrowserDialog(QDialog):
         rtype = 0
         # set rendering to gray so only selected band is shown
         if rtype == 0:
-            rlayer.setDrawingStyle(QgsRasterLayer.SingleBandGray)
+            rlayer.setDrawingStyle("SingleBandGray")
             renderer = rlayer.renderer()
             renderer.setGrayBand(band)
         rlayer.setDefaultContrastEnhancement()
@@ -134,7 +134,7 @@ class NetCDFBrowserDialog(QDialog):
             fileName = self.ui.leFileName.text()
             var = self.ui.cboVars.currentText()
 
-            for band_str in self.ui.leBandSelection.text().split(' ', QString.SkipEmptyParts):
+            for band_str in self.ui.leBandSelection.text().strip().split(' '):
                 band = int(band_str)
                 self.addLayer(fileName,var,band)
 
@@ -177,7 +177,7 @@ class NetCDFBrowserDialog(QDialog):
 
         self.prefix = ''
         self.variables = []
-        result = self.runCommand( "gdalinfo", QStringList() << fileName )
+        result = self.runCommand( "gdalinfo", [fileName] )
         for line in result.splitlines():
             line = line.lstrip()
             if not line.startswith('SUBDATASET_'):
@@ -237,7 +237,7 @@ class NetCDFBrowserDialog(QDialog):
         self.dim_band = dict()
         self.clear()
         uri = 'NETCDF:"%s":%s' % (self.ui.leFileName.text(), self.ui.cboVars.currentText())
-        result = self.runCommand( "gdalinfo", QStringList() << uri )
+        result = self.runCommand( "gdalinfo", [uri] )
 
         #look for extra dim definitions
         #  NETCDF_DIM_EXTRA={time,tile}
@@ -357,7 +357,7 @@ class NetCDFBrowserDialog(QDialog):
             band = self.ui.cboDim1.currentIndex()+1
             self.dim_band[band] = [self.ui.cboDim1.currentIndex()+1]
 
-        self.ui.leBandSelection.setText(QString.number(band))
+        self.ui.leBandSelection.setText(str(band))
 
 
     def updateDimsMulti(self):

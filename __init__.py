@@ -21,32 +21,6 @@
  This script initializes the plugin, making it known to QGIS.
 """
 
-
-def name():
-    return "NetCDF Browser"
-
-
-def description():
-    return "allows to browse multi-variable and multi-dimensional netCDF files, requires GDAL >= 1.10"
-
-
-def version():
-    return "Version 0.1.1"
-
-
-def icon():
-    return "icon.png"
-
-
-def qgisMinimumVersion():
-    return "1.8"
-
-def author():
-    return "Etienne Tourigny"
-
-def email():
-    return "etourigny.dev@gmail.com"
-
 def classFactory(iface):
     # load NetCDFBrowser class from file NetCDFBrowser
     from netcdfbrowser import NetCDFBrowser
