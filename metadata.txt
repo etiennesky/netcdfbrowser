@@ -24,7 +24,7 @@ email=etourigny.dev@gmail.com
 changelog=
         0.1     initial version
         0.1.1   add missing metadata and project info
-        0.2     fixes for apiv2
+        0.2     fixes for apiv2, other fixes
 
 # tags are comma separated with spaces allowed
 tags=netcdf

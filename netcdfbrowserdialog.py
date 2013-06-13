@@ -96,17 +96,24 @@ class NetCDFBrowserDialog(QDialog):
 
 
     def addLayer(self,fileName,var,band):
+        if debug>0:
+            print('addLayer(%s,%s,%s)' % (fileName,var,band))
+            print(str(len(self.dim_names)) + " - " + str(self.ui.cbxMultiSelection.isChecked()))
+
         uri = 'NETCDF:"%s":%s' % (fileName, var)
         #name = 'NETCDF:"%s":%s#%d' % (QFileInfo(fileName).fileName(), var, band)
-
-        tmp = str(band).zfill(int(math.ceil(math.log(self.ui.cboVars.count(),10))))
-        name = '%s_%s_#%s' % (QFileInfo(fileName).fileName(), var, tmp)
-        if len(self.dim_names) >= 1:
-            tmp = str(self.dim_band[band][0]).zfill(int(math.ceil(math.log(self.dim_def[self.dim_names[0]][0],10))))
-            name = "%s_%s=%s" % (name,self.dim_names[0],tmp)
-        if len(self.dim_names) >= 2 :
-            tmp = str(self.dim_band[band][1]).zfill(int(math.ceil(math.log(self.dim_def[self.dim_names[1]][0],10))))
-            name = "%s_%s=%s" % (name,self.dim_names[1],tmp)
+        name = '%s_var=%s' % (QFileInfo(fileName).fileName(), var)
+        if band:
+            band = int(band)
+            if len(self.dim_names) >= 1:
+                tmp = str(self.dim_band[band][0]).zfill(int(math.ceil(math.log(self.dim_def[self.dim_names[0]][0],10))))
+                name = "%s_%s=%s" % (name,self.dim_names[0],tmp)
+            if len(self.dim_names) >= 2 :
+                tmp = str(self.dim_band[band][1]).zfill(int(math.ceil(math.log(self.dim_def[self.dim_names[1]][0],10))))
+                name = "%s_%s=%s" % (name,self.dim_names[1],tmp)
+            num_bands = max(self.ui.cboDim1.count(),1) * max(self.ui.cboDim2.count(),1)
+            tmp = str(band).zfill(int(math.ceil(math.log(num_bands,10))))
+            name = '%s_b%s' % (name, tmp)
         rlayer = QgsRasterLayer( uri, name )
         if rlayer is None or not rlayer.isValid():
             print('NetCDF Browser Plugin : raster %s failed to load' % uri)
@@ -115,7 +122,7 @@ class NetCDFBrowserDialog(QDialog):
         #rtype = self.ui.cboRenderer.currentIndex() == 0:
         rtype = 0
         # set rendering to gray so only selected band is shown
-        if rtype == 0:
+        if rtype == 0 and band:
             rlayer.setDrawingStyle("SingleBandGray")
             renderer = rlayer.renderer()
             renderer.setGrayBand(band)
@@ -125,8 +132,18 @@ class NetCDFBrowserDialog(QDialog):
 
 
     def on_pbnAddSelection_pressed(self):
+        if debug>0:
+            print('on_pbnAddSelection_pressed')
+            print(str(len(self.dim_names)) + " - " + str(self.ui.cbxMultiSelection.isChecked()))
 
-        if self.ui.cbxMultiSelection.isChecked():
+        if len(self.dim_names) == 0 or not self.ui.cbxMultiSelection.isChecked():
+
+            fileName = self.ui.leFileName.text()
+            var = self.ui.cboVars.currentText()
+            band = self.ui.leBandSelection.text()
+            self.addLayer(fileName,var,band)
+
+        else:
 
             if len( self.ui.leBandSelection.text() ) == 0:
                 return
@@ -135,15 +152,7 @@ class NetCDFBrowserDialog(QDialog):
             var = self.ui.cboVars.currentText()
 
             for band_str in self.ui.leBandSelection.text().strip().split(' '):
-                band = int(band_str)
-                self.addLayer(fileName,var,band)
-
-        else:
-
-            fileName = self.ui.leFileName.text()
-            var = self.ui.cboVars.currentText()
-            band = int(self.ui.leBandSelection.text())
-            self.addLayer(fileName,var,band)
+                self.addLayer(fileName,var,band_str)
 
 
 
@@ -224,6 +233,9 @@ class NetCDFBrowserDialog(QDialog):
                             self.tr("No extra dimensions found, make sure you are using\nGDAL >= 1.10\nYou seem to have "+gdal_version),
                             QMessageBox.Close)
 
+    def warning2(self):
+        gdal_version = self.runCommand('gdalinfo',['--version'])
+        print("NetCDFBrowser: No extra dimensions found, but empty dimensions may have been removed")
 
     def updateVariable(self):
         if debug>0:
@@ -293,6 +305,9 @@ class NetCDFBrowserDialog(QDialog):
             print(str(self.dim_def))
 
         # update UI
+        self.ui.pbnDim1.setEnabled(False)
+        self.ui.pbnDim2.setEnabled(False)
+
         if len(self.dim_names) > 0:
             dim = self.dim_names[0]
             self.ui.lblDim1.setText( dim )
@@ -310,6 +325,7 @@ class NetCDFBrowserDialog(QDialog):
             # click first element of each dim
             if len(menu.actions()) > 1:
                 menu.actions()[1].setChecked(True)
+            self.ui.pbnDim1.setEnabled(True)
 
         if len(self.dim_names) > 1:
             dim = self.dim_names[1]
@@ -328,11 +344,13 @@ class NetCDFBrowserDialog(QDialog):
             # click first element of each dim
             if len(menu.actions()) > 1:
                 menu.actions()[1].setChecked(True)
+            self.ui.pbnDim2.setEnabled(True)
 
+        self.ui.cbxMultiSelection.setEnabled(self.ui.pbnDim1.isEnabled() or self.ui.pbnDim2.isEnabled())
 
         # make sure we found something, if not notify user
         if len(self.dim_names) == 0:
-            self.warning()
+            self.warning2()
         self.updateURI()
         self.updateDims()
 
@@ -357,7 +375,10 @@ class NetCDFBrowserDialog(QDialog):
             band = self.ui.cboDim1.currentIndex()+1
             self.dim_band[band] = [self.ui.cboDim1.currentIndex()+1]
 
-        self.ui.leBandSelection.setText(str(band))
+        if band == -1:
+            self.ui.leBandSelection.setText('')
+        else:
+            self.ui.leBandSelection.setText(str(band))
 
 
     def updateDimsMulti(self):
