@@ -384,10 +384,15 @@ class NetCDFBrowserDialog(QDialog):
 
         sel_str = ''
         for dim1val in sel1:
-            for dim2val in sel2:
-                band = self.bandNo(dim1val,dim2val)
-                self.dim_band[band] = [dim1val+1,dim2val+1]
+            if self.ui.pbnDim2.menu() is None:
+                band = dim1val+1
+                self.dim_band[band] = [dim1val+1]
                 sel_str = '%s%d ' % (sel_str,band)
+            else:
+                for dim2val in sel2:
+                    band = self.bandNo(dim1val,dim2val)
+                    self.dim_band[band] = [dim1val+1,dim2val+1]
+                    sel_str = '%s%d ' % (sel_str,band)
 
         self.ui.leBandSelection.setText(sel_str)
 
