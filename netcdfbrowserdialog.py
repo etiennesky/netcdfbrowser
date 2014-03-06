@@ -31,15 +31,30 @@ import re, math
 
 from osgeo import gdal
 
+debug = 1
+_units = ['days','hours','minutes','seconds','day','hour','minute','second']
+
 # import num2date from netcdftime if available
 has_netcdftime = True
 try:
     from netcdftime import num2date
+    if debug:
+        print('using external netcdftime')
 except ImportError:
     has_netcdftime = False
-_units = ['days','hours','minutes','seconds','day','hour','minute','second']
 
-debug = 0
+# try local netcdftime copy (netcdftime2.py)
+if not has_netcdftime:
+    has_netcdftime = True
+    try:
+        from netcdftime2 import num2date
+        if debug:
+            print('using internal netcdftime')
+    except ImportError:
+        has_netcdftime = False
+
+if debug and not has_netcdftime:
+    print('did not find netcdftime')
 
 # this menu don't hide when items are clicked
 # http://stackoverflow.com/questions/2050462/prevent-a-qmenu-from-closing-when-one-of-its-qaction-is-triggered

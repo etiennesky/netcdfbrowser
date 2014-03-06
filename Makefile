@@ -23,7 +23,7 @@ PLUGIN_UPLOAD = $(CURDIR)/plugin_upload.py
 # Makefile for a PyQGIS plugin 
 
 # translation
-SOURCES = netcdfbrowser.py ui_netcdfbrowser.py __init__.py netcdfbrowserdialog.py
+SOURCES = netcdfbrowser.py ui_netcdfbrowser.py __init__.py netcdfbrowserdialog.py netcdftime2.py
 #TRANSLATIONS = i18n/netcdfbrowser_en.ts
 TRANSLATIONS = 
 
@@ -31,7 +31,7 @@ TRANSLATIONS =
 
 PLUGINNAME = netcdfbrowser
 
-PY_FILES = netcdfbrowser.py netcdfbrowserdialog.py __init__.py
+PY_FILES = netcdfbrowser.py netcdfbrowserdialog.py __init__.py netcdftime2.py
 
 EXTRAS = icon.png metadata.txt
 
