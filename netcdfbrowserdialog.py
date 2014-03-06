@@ -31,6 +31,14 @@ import re, math
 
 from osgeo import gdal
 
+# import num2date from netcdftime if available
+has_netcdftime = True
+try:
+    from netcdftime import num2date
+except ImportError:
+    has_netcdftime = False
+_units = ['days','hours','minutes','seconds','day','hour','minute','second']
+
 debug = 0
 
 # this menu don't hide when items are clicked
@@ -80,6 +88,7 @@ class NetCDFBrowserDialog(QDialog):
         self.variables = None
         self.dim_names = []
         self.dim_values = dict()
+        self.dim_values2 = dict()
         self.dim_def = dict()
         self.dim_band = dict()
 
@@ -104,18 +113,26 @@ class NetCDFBrowserDialog(QDialog):
 
         uri = 'NETCDF:"%s":%s' % (fileName, var)
         #name = 'NETCDF:"%s":%s#%d' % (QFileInfo(fileName).fileName(), var, band)
-        name = '%s_var=%s' % (QFileInfo(fileName).fileName(), var)
+        name = '%s_var=%s' % (QFileInfo(fileName).fileName(), var) if var else QFileInfo(fileName).fileName()
         if band:
             band = int(band)
             if len(self.dim_names) >= 1:
-                tmp = str(self.dim_band[band][0]).zfill(int(math.ceil(math.log(self.dim_def[self.dim_names[0]][0],10))))
+                values2 = self.dim_values2[self.dim_names[0]] if self.dim_names[0] in self.dim_values2 else None
+                if values2 and len(values2) >= self.dim_band[band][0] :
+                    tmp = str(values2[self.dim_band[band][0]-1])
+                else:
+                    tmp = str(self.dim_band[band][0]).zfill(int(math.ceil(math.log(self.dim_def[self.dim_names[0]][0],10))))
                 name = "%s_%s=%s" % (name,self.dim_names[0],tmp)
             if len(self.dim_names) >= 2 :
-                tmp = str(self.dim_band[band][1]).zfill(int(math.ceil(math.log(self.dim_def[self.dim_names[1]][0],10))))
+                values2 = self.dim_values2[self.dim_names[1]] if self.dim_names[1] in self.dim_values2 else None
+                if values2 and len(values2) >= self.dim_band[band][1] :
+                    tmp = str(values2[self.dim_band[band][1]-1])
+                else:
+                    tmp = str(self.dim_band[band][1]).zfill(int(math.ceil(math.log(self.dim_def[self.dim_names[1]][0],10))))
                 name = "%s_%s=%s" % (name,self.dim_names[1],tmp)
             num_bands = max(self.ui.cboDim1.count(),1) * max(self.ui.cboDim2.count(),1)
             tmp = str(band).zfill(int(math.ceil(math.log(num_bands,10))))
-            name = '%s_b%s' % (name, tmp)
+            name = '%s_band=%s' % (name, tmp)
         rlayer = QgsRasterLayer( uri, name )
         if rlayer is None or not rlayer.isValid():
             print('NetCDF Browser Plugin : raster %s failed to load' % uri)
@@ -136,7 +153,7 @@ class NetCDFBrowserDialog(QDialog):
     def on_pbnAddSelection_pressed(self):
         if debug>0:
             print('on_pbnAddSelection_pressed')
-            print(str(len(self.dim_names)) + " - " + str(self.ui.cbxMultiSelection.isChecked()))
+            #print(str(len(self.dim_names)) + " - " + str(self.ui.cbxMultiSelection.isChecked()))
 
         if len(self.dim_names) == 0 or not self.ui.cbxMultiSelection.isChecked():
 
@@ -168,7 +185,9 @@ class NetCDFBrowserDialog(QDialog):
         self.prefix = ''
         self.variables = []
 
+        gdal.PushErrorHandler('CPLQuietErrorHandler')
         ds = gdal.Open(fileName)
+        gdal.PopErrorHandler()
         if ds is None:
             return
         md = ds.GetMetadata("SUBDATASETS")
@@ -230,6 +249,7 @@ class NetCDFBrowserDialog(QDialog):
         dim_map = dict()
         self.dim_names = []
         self.dim_values = dict()
+        self.dim_values2 = dict()
         self.dim_def = dict()
         self.dim_band = dict()
         self.clear()
@@ -245,7 +265,9 @@ class NetCDFBrowserDialog(QDialog):
         #  NETCDF_DIM_time_DEF={12,6}
         #  NETCDF_DIM_time_VALUES={1,32,60,91,121,152,182,213,244,274,305,335}
 
+        gdal.PushErrorHandler('CPLQuietErrorHandler')
         ds = gdal.Open(uri)
+        gdal.PopErrorHandler()
         if ds is None:
             return
         md = ds.GetMetadata()
@@ -288,11 +310,37 @@ class NetCDFBrowserDialog(QDialog):
             else:
                 self.dim_names.append(dim)
 
+        # transform time dimensions - currently requires netcdftime from python-netcdf4              
+        if has_netcdftime:
+            for dim in dim_names:
+                #dim+"#standard_name" in md and md[dim+"#standard_name"] == "time":
+                if dim in self.dim_values:
+                    if dim+"#units" in md:
+                        timestr = md[ dim+"#units" ]
+                        units = timestr.split()[0].lower()
+                        if units in _units:
+                            try:
+                                dates = num2date(self.dim_values[dim],units=timestr)
+                            except ValueError:
+                                continue
+                            self.dim_values2[ dim ] = []
+                            only_days = True
+                            for date in dates:
+                                val = date.strftime("%Y-%m-%d %H:%M:%S")
+                                if not val.endswith(" 00:00:00"):
+                                    only_days = False
+                                self.dim_values2[ dim ].append(val)
+                            if only_days:
+                                for i in range(0,len(self.dim_values2[ dim ])-1):
+                                    self.dim_values2[dim][i] = self.dim_values2[dim][i][0:10]
+
         if debug>0:
             print(str(dim_map))
             print(str(self.dim_names))
-            print(str(self.dim_values))
             print(str(self.dim_def))
+            print(str(self.dim_values))
+            print(str(self.dim_values2))
+
 
         # update UI
         self.ui.pbnDim1.setEnabled(False)
@@ -305,9 +353,11 @@ class NetCDFBrowserDialog(QDialog):
             action = QAction(self.tr('all'),menu)
             action.setCheckable(True)
             menu.addAction(action)
-            for v in self.dim_values[dim]:
-                self.ui.cboDim1.addItem(str(v))
-                action = QAction(str(v),menu)
+            i=0
+            for i in range(0,len(self.dim_values[dim])-1):
+                value = self.dim_values2[dim][i] if dim in self.dim_values2 else self.dim_values[dim][i]
+                self.ui.cboDim1.addItem(str(value))
+                action = QAction(str(value),menu)
                 action.setCheckable(True)
                 menu.addAction(action)                
             self.ui.pbnDim1.setMenu(menu)
