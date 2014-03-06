@@ -28,7 +28,6 @@ import resources_rc
 # Import the code for the dialog
 from netcdfbrowserdialog import NetCDFBrowserDialog
 
-
 class NetCDFBrowser:
 
     def __init__(self, iface):

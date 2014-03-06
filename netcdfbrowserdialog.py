@@ -29,6 +29,8 @@ from ui_netcdfbrowser import Ui_NetCDFBrowser
 
 import re, math
 
+from osgeo import gdal
+
 debug = 0
 
 # this menu don't hide when items are clicked
@@ -155,27 +157,6 @@ class NetCDFBrowserDialog(QDialog):
                 self.addLayer(fileName,var,band_str)
 
 
-
-
-    def runCommand(self,command,arguments):
-        process = QProcess()
-
-        # TODO remove annoying "No UNIDATA NC_GLOBAL" error
-        process.setProcessChannelMode(QProcess.MergedChannels);
-        process.start(command, arguments)
-
-        if not process.waitForFinished():
-            print('NetCDF Browser Plugin : process %s %s failed : %s ' \
-                  % (command, arguments.join(' '), process.errorString()) )
-            return ""
-        else:
-            res = process.readAll()
-            if debug>1:
-                print('command %s %s' % (command, arguments.join(' ')))
-                print('result:\n'+res)                      
-            return str(res)
-
-
     def updateFile(self):
         self.clear()
         fileName = self.ui.leFileName.text()
@@ -186,19 +167,24 @@ class NetCDFBrowserDialog(QDialog):
 
         self.prefix = ''
         self.variables = []
-        result = self.runCommand( "gdalinfo", [fileName] )
-        for line in result.splitlines():
-            line = line.lstrip()
-            if not line.startswith('SUBDATASET_'):
-                continue
+
+        ds = gdal.Open(fileName)
+        if ds is None:
+            return
+        md = ds.GetMetadata("SUBDATASETS")
+
+        for key in sorted(md.iterkeys()):
             #SUBDATASET_1_NAME=NETCDF:"file.nc":var
-            m = re.search('^(SUBDATASET_[0-9]+_NAME=)(NETCDF:".+"):(.+)', line)
+            if re.match('^SUBDATASET_[0-9]+_NAME$', key) is None:
+                continue
+            m = re.search('^(NETCDF:".+"):(.+)', md[key])
             if m is None:
                 continue
-            self.prefix = m.group(2)
-            self.variables.append(m.group(3))
+            self.prefix = m.group(1)
+            self.variables.append(m.group(2))
 
         if debug>0:
+            print('prefix: '+str(self.prefix))
             print('variables: '+str(self.variables))
         self.ui.cboVars.blockSignals(True)
         self.ui.cboVars.clear()
@@ -228,20 +214,19 @@ class NetCDFBrowserDialog(QDialog):
 
 
     def warning(self):
-        gdal_version = self.runCommand('gdalinfo',['--version'])
-        QMessageBox.warning(self, self.tr("NetCDF Browser Plugin"),
-                            self.tr("No extra dimensions found, make sure you are using\nGDAL >= 1.10\nYou seem to have "+gdal_version),
-                            QMessageBox.Close)
+        gdal_version = gdal.VersionInfo("RELEASE_NAME")
+        if debug>0:
+            print("gdal version: " + str(gdal.VersionInfo("VERSION_NUM")))
+        if int(gdal.VersionInfo("VERSION_NUM")) < 1000000:
+            msg = self.tr("No extra dimensions found, make sure you are using\nGDAL >= 1.10\nYou seem to have "+gdal_version)
+        else:
+            msg = self.tr("No extra dimensions found.")
+        QMessageBox.warning(self, self.tr("NetCDF Browser Plugin"), msg, QMessageBox.Close)
 
     def warning2(self):
-        gdal_version = self.runCommand('gdalinfo',['--version'])
         print("NetCDFBrowser: No extra dimensions found, but empty dimensions may have been removed")
 
     def updateVariable(self):
-        if debug>0:
-            print('updateVariable')
-
-        result_str = ''
         dim_map = dict()
         self.dim_names = []
         self.dim_values = dict()
@@ -249,7 +234,9 @@ class NetCDFBrowserDialog(QDialog):
         self.dim_band = dict()
         self.clear()
         uri = 'NETCDF:"%s":%s' % (self.ui.leFileName.text(), self.ui.cboVars.currentText())
-        result = self.runCommand( "gdalinfo", [uri] )
+
+        if debug>0:
+            print('updateVariable '+str(uri))
 
         #look for extra dim definitions
         #  NETCDF_DIM_EXTRA={time,tile}
@@ -258,16 +245,19 @@ class NetCDFBrowserDialog(QDialog):
         #  NETCDF_DIM_time_DEF={12,6}
         #  NETCDF_DIM_time_VALUES={1,32,60,91,121,152,182,213,244,274,305,335}
 
-        for line in result.splitlines():
-            line = line.lstrip()
-            if line.startswith('NETCDF_DIM_'):
-                result_str += line + '\n'
+        ds = gdal.Open(uri)
+        if ds is None:
+            return
+        md = ds.GetMetadata()
+        if md is None:
+            return
+
+        for key in sorted(md.iterkeys()):
+            if key.startswith('NETCDF_DIM_'):
+                line="%s=%s" % (key,md[key])
                 m = re.search('^(NETCDF_DIM_.+)={(.+)}', line)
                 if m is not None:
                     dim_map[ m.group(1) ] = m.group(2)
-            if line.startswith('Corner Coordinates:'):
-                break
-
 
         if not 'NETCDF_DIM_EXTRA' in dim_map:
             self.warning()
