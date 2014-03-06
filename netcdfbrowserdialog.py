@@ -350,7 +350,7 @@ class NetCDFBrowserDialog(QDialog):
             dim = self.dim_names[0]
             self.ui.lblDim1.setText( dim )
             menu = MyMenu()
-            action = QAction(self.tr('all'),menu)
+            action = QAction(self.tr('all/none'),menu)
             action.setCheckable(True)
             menu.addAction(action)
             i=0
@@ -371,7 +371,7 @@ class NetCDFBrowserDialog(QDialog):
             dim = self.dim_names[1]
             self.ui.lblDim2.setText( dim )
             menu = MyMenu()
-            action = QAction(self.tr('all'),menu)
+            action = QAction(self.tr('all/none'),menu)
             action.setCheckable(True)
             menu.addAction(action)
             for v in self.dim_values[dim]:
@@ -430,7 +430,7 @@ class NetCDFBrowserDialog(QDialog):
         i=0
         actions = [] if self.ui.pbnDim1.menu() is None else self.ui.pbnDim1.menu().actions()
         for action in actions:
-            if action.text() != self.tr('all'):
+            if action.text() != self.tr('all/none'):
                 if action.isChecked():
                     sel1.append(i)
                 i = i + 1
@@ -438,7 +438,7 @@ class NetCDFBrowserDialog(QDialog):
         i=0
         actions = [] if self.ui.pbnDim2.menu() is None else self.ui.pbnDim2.menu().actions()
         for action in actions:
-            if action.text() != self.tr('all'):
+            if action.text() != self.tr('all/none'):
                 if action.isChecked():
                     sel2.append(i)
                 i = i + 1
@@ -484,11 +484,11 @@ class NetCDFBrowserDialog(QDialog):
             pbn = self.ui.pbnDim2
         else:
             return
-        # 'all' action selects all/none
-        if action.text() == self.tr('all'):
+        # 'all/none' action selects all/none
+        if action.text() == self.tr('all/none'):
             pbn.blockSignals(True)
             for act in pbn.menu().actions():
-                if act.text() != self.tr('all'):
+                if act.text() != self.tr('all/none'):
                     act.setChecked(action.isChecked())
             pbn.blockSignals(False)
         
