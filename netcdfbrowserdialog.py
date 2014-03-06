@@ -346,7 +346,7 @@ class NetCDFBrowserDialog(QDialog):
                                     only_days = False
                                 self.dim_values2[ dim ].append(val)
                             if only_days:
-                                for i in range(0,len(self.dim_values2[ dim ])-1):
+                                for i in range(0,len(self.dim_values2[ dim ])):
                                     self.dim_values2[dim][i] = self.dim_values2[dim][i][0:10]
 
         if debug>0:
@@ -368,8 +368,7 @@ class NetCDFBrowserDialog(QDialog):
             action = QAction(self.tr('all/none'),menu)
             action.setCheckable(True)
             menu.addAction(action)
-            i=0
-            for i in range(0,len(self.dim_values[dim])-1):
+            for i in range(0,len(self.dim_values[dim])):
                 value = self.dim_values2[dim][i] if dim in self.dim_values2 else self.dim_values[dim][i]
                 self.ui.cboDim1.addItem(str(value))
                 action = QAction(str(value),menu)
