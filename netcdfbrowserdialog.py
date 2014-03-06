@@ -31,7 +31,7 @@ import re, math
 
 from osgeo import gdal
 
-debug = 1
+debug = 0
 _units = ['days','hours','minutes','seconds','day','hour','minute','second']
 
 # import num2date from netcdftime if available
