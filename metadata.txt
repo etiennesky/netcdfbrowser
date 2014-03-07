@@ -12,7 +12,7 @@
 name=NetCDF Browser
 qgisMinimumVersion=2.0
 description=allows to browse multi-variable and multi-dimensional netCDF files, requires GDAL >= 1.10
-version=0.3
+version=0.4.0
 author=Etienne Tourigny
 email=etourigny.dev@gmail.com
 
@@ -26,6 +26,7 @@ changelog=
         0.1.1   add missing metadata and project info
         0.2     fixes for apiv2, other fixes
         0.3     parse time values using netcdftime from python-netcdf4 ; use python api instead of gdalinfo output
+        0.4.0   add crs selector ; remove single dimension selector
 
 # tags are comma separated with spaces allowed
 tags=netcdf
