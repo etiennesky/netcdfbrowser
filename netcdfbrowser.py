@@ -50,7 +50,7 @@ class NetCDFBrowser:
                 QCoreApplication.installTranslator(self.translator)
 
         # Create the dialog (after translation) and keep reference
-        self.dlg = NetCDFBrowserDialog()
+        self.dlg = NetCDFBrowserDialog(iface)
 
     def initGui(self):
         # Create action that will start plugin configuration

@@ -24,6 +24,7 @@
 from PyQt4.QtCore import *
 from PyQt4.QtGui import *
 from qgis.core import *
+from qgis.gui import QgsGenericProjectionSelector
 
 from ui_netcdfbrowser import Ui_NetCDFBrowser
 
@@ -38,7 +39,7 @@ _units = ['days','hours','minutes','seconds','day','hour','minute','second']
 has_netcdftime = True
 try:
     from netcdftime import num2date
-    if debug:
+    if debug > 0:
         print('using external netcdftime')
 except ImportError:
     has_netcdftime = False
@@ -48,12 +49,12 @@ if not has_netcdftime:
     has_netcdftime = True
     try:
         from netcdftime2 import num2date
-        if debug:
+        if debug > 0:
             print('using internal netcdftime')
     except ImportError:
         has_netcdftime = False
 
-if debug and not has_netcdftime:
+if debug > 0 and not has_netcdftime:
     print('did not find netcdftime')
 
 # this menu don't hide when items are clicked
@@ -86,19 +87,9 @@ def num(s):
 
 
 class NetCDFBrowserDialog(QDialog):
-    def __init__(self):
-        QDialog.__init__(self)
-        # Set up the user interface from Designer.
-        self.ui = Ui_NetCDFBrowser()
-        self.ui.setupUi(self)
+    def __init__(self, iface):
 
-        self.ui.cbxMultiSelection.setChecked(True)
-        self.on_cbxMultiSelection_toggled(True)
-
-        QObject.connect(self.ui.cboVars, SIGNAL("currentIndexChanged(QString)"), self.updateVariable)   
-        QObject.connect(self.ui.cboDim1, SIGNAL("currentIndexChanged(QString)"), self.updateDims)   
-        QObject.connect(self.ui.cboDim2, SIGNAL("currentIndexChanged(QString)"), self.updateDims)   
-
+        self.iface = iface
         self.prefix = ''
         self.variables = None
         self.dim_names = []
@@ -106,6 +97,22 @@ class NetCDFBrowserDialog(QDialog):
         self.dim_values2 = dict()
         self.dim_def = dict()
         self.dim_band = dict()
+        self.dim1Count=0
+        self.dim2Count=0
+        self.layerCrs = QgsCoordinateReferenceSystem()
+        self.selectedCrs = QgsCoordinateReferenceSystem()
+
+        QDialog.__init__(self)
+        # Set up the user interface from Designer.
+        self.ui = Ui_NetCDFBrowser()
+        self.ui.setupUi(self)
+
+        self.ui.cboCrs.clear()
+        self.ui.cboCrs.insertItem(0, self.tr("Layer (None)"))
+        self.ui.cboCrs.insertItem(1, self.tr("Project (None)"))
+        self.ui.cboCrs.insertItem(2, self.tr("Selected (None)"))
+
+        QObject.connect(self.ui.cboVars, SIGNAL("currentIndexChanged(QString)"), self.updateVariable)   
 
 
     def exec_(self):
@@ -121,10 +128,10 @@ class NetCDFBrowserDialog(QDialog):
             self.updateFile()
 
 
+    # TODO add a addLayers() function
     def addLayer(self,fileName,var,band):
         if debug>0:
             print('addLayer(%s,%s,%s)' % (fileName,var,band))
-            print(str(len(self.dim_names)) + " - " + str(self.ui.cbxMultiSelection.isChecked()))
 
         uri = 'NETCDF:"%s":%s' % (fileName, var)
         #name = 'NETCDF:"%s":%s#%d' % (QFileInfo(fileName).fileName(), var, band)
@@ -145,13 +152,38 @@ class NetCDFBrowserDialog(QDialog):
                 else:
                     tmp = str(self.dim_band[band][1]).zfill(int(math.ceil(math.log(self.dim_def[self.dim_names[1]][0],10))))
                 name = "%s_%s=%s" % (name,self.dim_names[1],tmp)
-            num_bands = max(self.ui.cboDim1.count(),1) * max(self.ui.cboDim2.count(),1)
+            num_bands = max(self.dim1Count,1) * max(self.dim1Count,1)
             tmp = str(band).zfill(int(math.ceil(math.log(num_bands,10))))
             name = '%s_band=%s' % (name, tmp)
+
+        # temporarily override /Projections/defaultBehaviour to avoid dialog prompt
+        # this is taken from qgsbrowserdockwidget.cpp
+        # TODO - integrate this into qgis core
+        if self.ui.cboCrs.currentIndex() != 0:
+            settings = QSettings()
+            defaultProjectionOption = settings.value( "/Projections/defaultBehaviour", "prompt" )
+            if defaultProjectionOption == "prompt":
+                settings.setValue( "/Projections/defaultBehaviour", "useProject" )
+
         rlayer = QgsRasterLayer( uri, name )
         if rlayer is None or not rlayer.isValid():
             print('NetCDF Browser Plugin : raster %s failed to load' % uri)
             return
+
+        # restore /Projections/defaultBehaviour
+        if self.ui.cboCrs.currentIndex() != 0:
+            if defaultProjectionOption == "prompt":
+                settings.setValue( "/Projections/defaultBehaviour", defaultProjectionOption );
+
+        if debug>0:
+            print('created layer')
+
+        # set layer CRS
+        if self.ui.cboCrs.currentIndex() == 1:
+            # this has changed in 2.4 ... 
+            rlayer.setCrs( self.iface.mapCanvas().mapRenderer().destinationCrs() )
+        elif self.ui.cboCrs.currentIndex() == 2:
+            rlayer.setCrs( self.selectedCrs )
 
         #rtype = self.ui.cboRenderer.currentIndex() == 0:
         rtype = 0
@@ -170,7 +202,7 @@ class NetCDFBrowserDialog(QDialog):
             print('on_pbnAddSelection_pressed')
             #print(str(len(self.dim_names)) + " - " + str(self.ui.cbxMultiSelection.isChecked()))
 
-        if len(self.dim_names) == 0 or not self.ui.cbxMultiSelection.isChecked():
+        if len(self.dim_names) == 0:
 
             fileName = self.ui.leFileName.text()
             var = self.ui.cboVars.currentText()
@@ -206,6 +238,7 @@ class NetCDFBrowserDialog(QDialog):
         if ds is None:
             return
         md = ds.GetMetadata("SUBDATASETS")
+        ds = None
 
         for key in sorted(md.iterkeys()):
             #SUBDATASET_1_NAME=NETCDF:"file.nc":var
@@ -236,20 +269,18 @@ class NetCDFBrowserDialog(QDialog):
             print('clear')
         self.ui.lblDim1.setText('     -     ')
         self.ui.lblDim2.setText('     -     ')
-        self.ui.cboDim1.clear()
-        self.ui.cboDim2.clear()
         self.ui.leBandSelection.clear()
-        if self.ui.pbnDim1.menu() is not None:
+        if self.ui.pbnDim1.menu():
             QObject.disconnect(self.ui.pbnDim1.menu(), SIGNAL("triggered(QAction *)"), self.on_pbnDimx_triggered)   
             self.ui.pbnDim1.setMenu(None)
-        if self.ui.pbnDim2.menu() is not None:
+        if self.ui.pbnDim2.menu():
             QObject.disconnect(self.ui.pbnDim2.menu(), SIGNAL("triggered(QAction *)"), self.on_pbnDimx_triggered)   
             self.ui.pbnDim2.setMenu(None)
 
 
     def warning(self):
         gdal_version = gdal.VersionInfo("RELEASE_NAME")
-        if debug>0:
+        if debug>1:
             print("gdal version: " + str(gdal.VersionInfo("VERSION_NUM")))
         if int(gdal.VersionInfo("VERSION_NUM")) < 1000000:
             msg = self.tr("No extra dimensions found, make sure you are using\nGDAL >= 1.10\nYou seem to have "+gdal_version)
@@ -267,6 +298,8 @@ class NetCDFBrowserDialog(QDialog):
         self.dim_values2 = dict()
         self.dim_def = dict()
         self.dim_band = dict()
+        self.dim1Count = 0
+        self.dim2Count = 0
         self.clear()
         uri = 'NETCDF:"%s":%s' % (self.ui.leFileName.text(), self.ui.cboVars.currentText())
 
@@ -280,15 +313,45 @@ class NetCDFBrowserDialog(QDialog):
         #  NETCDF_DIM_time_DEF={12,6}
         #  NETCDF_DIM_time_VALUES={1,32,60,91,121,152,182,213,244,274,305,335}
 
+        # open file and get basic info
         gdal.PushErrorHandler('CPLQuietErrorHandler')
         ds = gdal.Open(uri)
         gdal.PopErrorHandler()
         if ds is None:
             return
+        wkt = ds.GetProjection()
         md = ds.GetMetadata()
+        ds = None
         if md is None:
             return
 
+        # update CRS selectors
+        projectCrs = self.iface.mapCanvas().mapRenderer().destinationCrs()
+        self.ui.cboCrs.setItemText(1, 
+                                   self.tr( "Project" ) + " (%s, %s)" % (projectCrs.description(), projectCrs.authid()) )
+        
+        if not wkt or not self.layerCrs.createFromWkt(wkt):
+                self.layerCrs = QgsCoordinateReferenceSystem()
+        if debug > 0:
+            print('wkt: '+wkt+' layer desc:'+self.layerCrs.description())
+
+        # if layer has valid crs, use that, if not use selected crs
+        if self.layerCrs.description():
+            self.ui.cboCrs.setItemText(0, 
+                                       self.tr( "Layer" ) + " (%s, %s)" % (self.layerCrs.description(), self.layerCrs.authid()) )
+            self.ui.cboCrs.setCurrentIndex(0)
+        else:
+            self.ui.cboCrs.setItemText(0, self.tr("Layer (None)"))
+            if self.selectedCrs.description():
+                self.ui.cboCrs.setItemText(2, 
+                                           self.tr( "Selected" ) + " (%s, %s)" % (self.selectedCrs.description(), self.selectedCrs.authid()) )
+            else:
+                self.ui.cboCrs.setItemText(2, self.tr("Selected (None)"))
+            self.ui.cboCrs.setCurrentIndex(2)
+
+        ds = None
+
+        # iterate over all md items looking for dim info
         for key in sorted(md.iterkeys()):
             if key.startswith('NETCDF_DIM_'):
                 line="%s=%s" % (key,md[key])
@@ -349,7 +412,7 @@ class NetCDFBrowserDialog(QDialog):
                                 for i in range(0,len(self.dim_values2[ dim ])):
                                     self.dim_values2[dim][i] = self.dim_values2[dim][i][0:10]
 
-        if debug>0:
+        if debug>1:
             print(str(dim_map))
             print(str(self.dim_names))
             print(str(self.dim_def))
@@ -369,8 +432,8 @@ class NetCDFBrowserDialog(QDialog):
             action.setCheckable(True)
             menu.addAction(action)
             for i in range(0,len(self.dim_values[dim])):
+                self.dim2Count = self.dim2Count + 1
                 value = self.dim_values2[dim][i] if dim in self.dim_values2 else self.dim_values[dim][i]
-                self.ui.cboDim1.addItem(str(value))
                 action = QAction(str(value),menu)
                 action.setCheckable(True)
                 menu.addAction(action)                
@@ -388,9 +451,10 @@ class NetCDFBrowserDialog(QDialog):
             action = QAction(self.tr('all/none'),menu)
             action.setCheckable(True)
             menu.addAction(action)
-            for v in self.dim_values[dim]:
-                self.ui.cboDim2.addItem(str(v))
-                action = QAction(str(v),menu)
+            for i in range(0,len(self.dim_values[dim])):
+                self.dim2Count = self.dim2Count + 1
+                value = self.dim_values[dim][i]
+                action = QAction(str(value),menu)
                 action.setCheckable(True)
                 menu.addAction(action)
             self.ui.pbnDim2.setMenu(menu)
@@ -399,8 +463,6 @@ class NetCDFBrowserDialog(QDialog):
             if len(menu.actions()) > 1:
                 menu.actions()[1].setChecked(True)
             self.ui.pbnDim2.setEnabled(True)
-
-        self.ui.cbxMultiSelection.setEnabled(self.ui.pbnDim1.isEnabled() or self.ui.pbnDim2.isEnabled())
 
         # make sure we found something, if not notify user
         if len(self.dim_names) == 0:
@@ -413,28 +475,8 @@ class NetCDFBrowserDialog(QDialog):
         # TODO minimize calls to this fct
         if debug>0:
             print('updateDims')
-        if self.ui.cbxMultiSelection.isChecked():
-            self.updateDimsMulti()
-        else:
-            self.updateDimsSingle()
+        self.updateDimsMulti()
             
-
-    def updateDimsSingle(self):
-        # update single band selection
-        band = -1
-        if ( len(self.dim_names) > 1 ):
-            band = self.bandNo(self.ui.cboDim1.currentIndex(),self.ui.cboDim2.currentIndex())
-            self.dim_band[band] = [self.ui.cboDim1.currentIndex()+1,self.ui.cboDim2.currentIndex()+1]
-        elif ( self.ui.cboDim1.currentIndex() > -1 ):
-            band = self.ui.cboDim1.currentIndex()+1
-            self.dim_band[band] = [self.ui.cboDim1.currentIndex()+1]
-
-        if band == -1:
-            self.ui.leBandSelection.setText('')
-        else:
-            self.ui.leBandSelection.setText(str(band))
-
-
     def updateDimsMulti(self):
         # update multi-band selection
         self.ui.leBandSelection.clear()
@@ -510,10 +552,21 @@ class NetCDFBrowserDialog(QDialog):
         self.updateDims()
 
 
-    def on_cbxMultiSelection_toggled(self,checked):
-        self.ui.cboDim1.setHidden(checked)
-        self.ui.cboDim2.setHidden(checked)
-        self.ui.pbnDim1.setHidden(not checked)
-        self.ui.pbnDim2.setHidden(not checked)
+    def on_pbnCrs_pressed(self):
+        selector = QgsGenericProjectionSelector(self)
+        selector.setMessage();
+        if self.layerCrs.description():
+            selector.setSelectedCrsId( self.layerCrs.srsid() );
+        elif self.selectedCrs.description():
+            selector.setSelectedCrsId( self.selectedCrs.srsid() );
+        if selector.exec_():
+            self.selectedCrs.createFromId( selector.selectedCrsId(), QgsCoordinateReferenceSystem.InternalCrsId );
+            self.ui.cboCrs.setCurrentIndex(2)
 
-        self.updateDims()
+        if self.selectedCrs.description():
+            self.ui.cboCrs.setItemText(2, 
+                                       self.tr( "Selected" ) + " (%s, %s)" % (self.selectedCrs.description(), self.selectedCrs.authid()) )
+        else:
+            self.ui.cboCrs.setItemText(2, self.tr("Selected (None)"))
+            
+
