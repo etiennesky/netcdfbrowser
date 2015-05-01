@@ -404,7 +404,7 @@ class NetCDFBrowserDialog(QDialog):
                             self.dim_values2[ dim ] = []
                             only_days = True
                             for date in dates:
-                                val = date.strftime("%Y-%m-%d %H:%M:%S")
+                                val = date.isoformat(" ") # equivalent to strftime("%Y-%m-%d %H:%M:%S")
                                 if not val.endswith(" 00:00:00"):
                                     only_days = False
                                 self.dim_values2[ dim ].append(val)
